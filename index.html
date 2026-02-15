@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FF Diamond Sync Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com');
+        body { background: #020617; color: #f8fafc; font-family: sans-serif; }
+        .ff-font { font-family: 'Orbitron', sans-serif; }
+        .ff-gradient { background: linear-gradient(135deg, #ea580c 0%, #fbbf24 100%); }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <!-- LOGIN/SIGNUP CARD -->
+    <div id="auth-card" class="w-full max-w-md bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl">
+        <div class="text-center mb-8">
+            <h1 class="ff-font text-4xl font-black text-orange-500 italic">BOOYAH!</h1>
+            <p class="text-slate-500 text-xs tracking-widest uppercase mt-2">Global Diamond Sync</p>
+        </div>
+        <div class="space-y-4">
+            <input id="email" type="email" placeholder="Email Address" class="w-full p-4 rounded-lg bg-slate-950 border border-slate-800 focus:border-orange-500 outline-none transition-all">
+            <input id="pass" type="password" placeholder="Password" class="w-full p-4 rounded-lg bg-slate-950 border border-slate-800 focus:border-orange-500 outline-none transition-all">
+            <div class="flex gap-2">
+                <button onclick="handleAuth('login')" class="flex-1 bg-slate-800 py-3 rounded-lg font-bold hover:bg-slate-700">LOGIN</button>
+                <button onclick="handleAuth('signup')" class="flex-1 ff-gradient py-3 rounded-lg font-bold text-slate-900 hover:scale-105 transition-all">SIGN UP</button>
+            </div>
+            <div class="relative flex py-2 items-center">
+                <div class="flex-grow border-t border-slate-800"></div>
+                <span class="flex-shrink mx-4 text-slate-600 text-xs font-bold uppercase">Or Sync With</span>
+                <div class="flex-grow border-t border-slate-800"></div>
+            </div>
+            <button onclick="loginWithGoogle()" class="w-full bg-white text-slate-900 py-3 rounded-lg font-bold flex items-center justify-center gap-3 hover:bg-slate-200">
+                <img src="https://www.gstatic.com" width="18"> Sign in with Google
+            </button>
+        </div>
+    </div>
+
+    <!-- PLAYER DASHBOARD -->
+    <div id="dashboard" class="hidden w-full max-w-2xl bg-slate-900 border-l-8 border-orange-600 p-8 rounded-xl shadow-2xl">
+        <div class="flex justify-between items-start mb-8">
+            <div>
+                <p class="text-slate-500 text-xs font-bold uppercase">Survivor Profile</p>
+                <h2 id="p-name" class="ff-font text-2xl font-black italic">...</h2>
+                <p class="text-orange-500 font-mono text-sm">ID: <span id="p-uid">00000000</span></p>
+            </div>
+            <div class="text-right">
+                <div class="flex items-center justify-end gap-2">
+                    <span id="p-diamonds" class="text-4xl font-black text-cyan-400">0</span>
+                    <span class="text-2xl">💎</span>
+                </div>
+                <button onclick="logout()" class="text-xs text-slate-600 underline mt-2 hover:text-white">Sign Out</button>
+            </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+            <div class="bg-slate-950 p-5 rounded-lg border border-slate-800">
+                <h3 class="text-xs font-bold text-orange-400 mb-4 uppercase">Redeem Codes</h3>
+                <input id="redeem-code" type="text" placeholder="12-DIGIT CODE" class="w-full bg-transparent border-b border-slate-800 p-2 outline-none uppercase font-mono tracking-tighter mb-4 text-center">
+                <button onclick="redeem()" class="w-full bg-cyan-700 py-2 rounded font-bold text-xs hover:bg-cyan-600">REDEEM NOW</button>
+            </div>
+            <div class="bg-slate-950 p-5 rounded-lg border border-slate-800">
+                <h3 class="text-xs font-bold text-orange-400 mb-4 uppercase">Sync Top-Up</h3>
+                <button onclick="topUp(100)" class="w-full bg-slate-800 py-2 rounded text-xs mb-2 hover:bg-slate-700 font-bold">100 DIAMONDS ($0.99)</button>
+                <button onclick="topUp(520)" class="w-full bg-slate-800 py-2 rounded text-xs hover:bg-slate-700 font-bold">520 DIAMONDS ($4.99)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FIREBASE SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, runTransaction } from "https://www.gstatic.com";
+
+        // PASTE YOUR CONFIG FROM FIREBASE CONSOLE HERE
+        const firebaseConfig = {
+            apiKey: "AIzaSyCOwAD05GXL7bw0cSeUHh-5WnNqOpVbzTw",
+            authDomain: "hivserverlog.firebaseapp.com",
+            projectId: "hivserverlog",
+            storageBucket: "hivserverlog.firebasestorage.app",
+            messagingSenderId: "466893273443",
+            appId: "1:466893273443:android:1ec3aa2d8bd7abc81c3b56"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        async function getNextNumericID() {
+            const counterRef = doc(db, "metadata", "user_counter");
+            return await runTransaction(db, async (t) => {
+                const snap = await t.get(counterRef);
+                const nextId = snap.data().current + 1;
+                t.update(counterRef, { current: nextId });
+                return nextId;
+            });
+        }
+
+        async function syncAccount(user) {
+            const userRef = doc(db, "players", user.uid);
+            const snap = await getDoc(userRef);
+            if (!snap.exists()) {
+                const numericID = await getNextNumericID();
+                await setDoc(userRef, { playerID: numericID, email: user.email, diamonds: 0, name: user.displayName || "Survivor" });
+            }
+            loadDashboard(user.uid);
+        }
+
+        async function loadDashboard(uid) {
+            const snap = await getDoc(doc(db, "players", uid));
+            const d = snap.data();
+            document.getElementById('p-name').innerText = d.name;
+            document.getElementById('p-uid').innerText = d.playerID;
+            document.getElementById('p-diamonds').innerText = d.diamonds;
+            document.getElementById('auth-card').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+        }
+
+        window.handleAuth = async (type) => {
+            const e = document.getElementById('email').value;
+            const p = document.getElementById('pass').value;
+            try {
+                const res = (type === 'login') ? await signInWithEmailAndPassword(auth, e, p) : await createUserWithEmailAndPassword(auth, e, p);
+                syncAccount(res.user);
+            } catch (err) { alert(err.message); }
+        };
+
+        window.loginWithGoogle = async () => {
+            try {
+                const res = await signInWithPopup(auth, new GoogleAuthProvider());
+                syncAccount(res.user);
+            } catch (err) { alert(err.message); }
+        };
+
+        window.topUp = async (amt) => {
+            await updateDoc(doc(db, "players", auth.currentUser.uid), { diamonds: increment(amt) });
+            loadDashboard(auth.currentUser.uid);
+        };
+
+        window.redeem = async () => {
+            const code = document.getElementById('redeem-code').value.toUpperCase();
+            if(code === "FREE1000") { await topUp(1000); alert("BOOYAH! 1000 Diamonds Added!"); } 
+            else { alert("Invalid Code"); }
+        };
+
+        window.logout = () => signOut(auth).then(() => location.reload());
+        onAuthStateChanged(auth, (user) => { if(user) loadDashboard(user.uid); });
+    </script>
+</body>
+                                                                                    </html>
